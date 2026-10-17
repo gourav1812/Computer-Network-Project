@@ -13,3 +13,15 @@ class AdaptiveRTO:
         # First RTT measurement baseline
         self.srtt = rtt
         self.rttvar = rtt / 2.0    
+     else:
+        alpha = 0.125
+        beta = 0.25
+        self.rttvar = (1 - beta) * self.rttvar + beta * abs(self.srtt - rtt)
+        self.srtt = (1 - alpha) * self.srtt + alpha * rtt
+
+     # RTO = SRTT + 4 * RTTVAR, clamped within min and max
+     self.rto = max(self.min_rto, min(self.srtt + 4.0 * self.rttvar, self.max_rto))     
+
+    def backoff(self) -> None:
+     """Exponential backoff on timeout, clamped to max_rto."""
+     self.rto = min(self.rto * 2.0, self.max_rto)
