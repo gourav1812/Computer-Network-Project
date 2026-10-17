@@ -62,6 +62,49 @@ class TestStopAndWait(unittest.TestCase):
             )
 
         self.assertEqual(sock.sendto.call_count, 3)
+        
+    def test_ignores_ack_from_wrong_address(self):
+        sock = Mock()
+        sock.recvfrom.side_effect = [
+            (b"ACK1", ("127.0.0.2", 9000)),
+            (b"ACK1", ("127.0.0.1", 9000))
+        ]
+
+        result = send_stop_and_wait(
+            sock=sock,
+            packets=[(1, b"DATA1")],
+            receiver_addr=("127.0.0.1", 9000),
+            get_ack_seq=lambda data: int(data[3:]),
+            timeout=1.0,
+            max_retries=2
+        )
+
+        self.assertTrue(result)
+        sock.sendto.assert_called_once_with(
+            b"DATA1", ("127.0.0.1", 9000)
+        )
+
+    def test_ignores_wrong_sequence_ack(self):
+        sock = Mock()
+        sock.recvfrom.side_effect = [
+            (b"ACK2", ("127.0.0.1", 9000)),
+            (b"ACK1", ("127.0.0.1", 9000))
+        ]
+
+        result = send_stop_and_wait(
+            sock=sock,
+            packets=[(1, b"DATA1")],
+            receiver_addr=("127.0.0.1", 9000),
+            get_ack_seq=lambda data: int(data[3:]),
+            timeout=1.0,
+            max_retries=2
+        )
+
+        self.assertTrue(result)
+        sock.sendto.assert_called_once_with(
+            b"DATA1", ("127.0.0.1", 9000)
+        )
+
 
 
 if __name__ == "__main__":

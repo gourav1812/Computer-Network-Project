@@ -23,21 +23,28 @@ def send_stop_and_wait(
         acknowledged = False
 
         for attempt in range(max_retries + 1):
-            # Send the current packet
             sock.sendto(packet, receiver_addr)
 
             try:
-                # Wait for an acknowledgement
-                data, address = sock.recvfrom(4096)
+                while True:
+                    data, address = sock.recvfrom(4096)
 
-                ack_seq = get_ack_seq(data)
+                    # Ignore ACKs from unexpected senders
+                    if address != receiver_addr:
+                        continue
 
-                if ack_seq == seq:
-                    acknowledged = True
+                    # Ignore ACKs for other packets
+                    ack_seq = get_ack_seq(data)
+
+                    if ack_seq == seq:
+                        acknowledged = True
+                        break
+
+                if acknowledged:
                     break
 
             except socket.timeout:
-                # No ACK arrived before the timeout
+                # Retry if no valid ACK arrives before timeout
                 pass
 
         if not acknowledged:
