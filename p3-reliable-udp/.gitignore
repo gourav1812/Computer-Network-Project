@@ -2,3 +2,7 @@ __pycache__/
 *.pyc
 .pytest_cache/
 results/*.csv
+
+# Temporary stubs - remove when teammates push their code
+p3_rudp/packet.py
+p3_rudp/protocols/base.py
