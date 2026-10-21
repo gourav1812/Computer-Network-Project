@@ -28,3 +28,37 @@ class SelectiveRepeatSender(BaseSender):
                 send_times[next_seq] = now
                 send_counts[next_seq] = 1
                 next_seq += 1
+
+            # 2. Compute socket timeout from earliest pending deadline
+            now = time.monotonic()
+            if deadlines:
+                earliest_deadline = min(deadlines.values())
+                timeout = max(0.001, earliest_deadline - now)
+            else:
+                timeout = current_rto
+            self.sock.settimeout(timeout)
+
+            # 3. Wait for ACKs
+            try:
+                raw, _ = self.sock.recvfrom(4096)
+                try:
+                    pkt = decode(raw)
+                    if pkt.ptype == ACK:
+                        s = pkt.ack
+                        if s not in acked and s < n:
+                            acked.add(s)
+                            self.stats.acks_received += 1
+                            if s in deadlines:
+                                del deadlines[s]
+                            # Karn's rule: sample only if never retransmitted
+                            if send_counts.get(s, 0) == 1 and self.rto and s in send_times:
+                                rtt = time.monotonic() - send_times[s]
+                                self.stats.rtt_samples.append(rtt)
+                                self.rto.sample(rtt)
+                            # Slide window base forward past consecutive acked packets
+                            while base in acked:
+                                base += 1
+                except CorruptPacket:
+                    self.stats.corrupt_dropped += 1
+            except socket.timeout:
+                pass
