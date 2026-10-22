@@ -62,3 +62,31 @@ class SelectiveRepeatSender(BaseSender):
                     self.stats.corrupt_dropped += 1
             except socket.timeout:
                 pass
+
+            # 4. Resend expired packets (only those with deadlines in the past)
+            now = time.monotonic()
+            for seq in list(deadlines.keys()):
+                if deadlines[seq] <= now:
+                    pkt = Packet(seq=seq, ack=0, ptype=DATA, payload=chunks[seq])
+                    self.sock.sendto(encode(pkt), self.peer)
+                    self.stats.packets_sent += 1
+                    self.stats.retransmissions += 1
+                    send_counts[seq] = send_counts.get(seq, 0) + 1
+                    if self.rto:
+                        self.rto.backoff()
+                    deadlines[seq] = now + (self.rto.rto if self.rto else 1.0)
+
+        # Teardown with FIN handshake
+        fin_pkt = Packet(seq=n, ack=0, ptype=FIN)
+        fin_raw = encode(fin_pkt)
+        for _ in range(5):
+            self.sock.sendto(fin_raw, self.peer)
+            self.stats.packets_sent += 1
+            self.sock.settimeout(0.5)
+            try:
+                resp_raw, _ = self.sock.recvfrom(4096)
+                resp = decode(resp_raw)
+                if resp.ptype == FIN_ACK:
+                    break
+            except (socket.timeout, CorruptPacket):
+                pass
