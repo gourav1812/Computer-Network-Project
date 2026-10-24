@@ -90,3 +90,32 @@ class SelectiveRepeatSender(BaseSender):
                     break
             except (socket.timeout, CorruptPacket):
                 pass
+
+class SelectiveRepeatReceiver(BaseReceiver):
+    def receive_chunks(self):
+        rcv_base = 0
+        window = self.window
+        buffer = {}  # seq -> payload
+        chunks = []
+        sender_addr = None
+
+        while True:
+            raw, addr = self.sock.recvfrom(4096)
+            sender_addr = addr
+            try:
+                pkt = decode(raw)
+            except CorruptPacket:
+                self.stats.corrupt_dropped += 1
+                continue
+
+            if pkt.ptype == DATA:
+                seq = pkt.seq
+                # Packet within receiver window [rcv_base, rcv_base + window - 1]
+                if rcv_base <= seq < rcv_base + window:
+                    ack_pkt = Packet(seq=0, ack=seq, ptype=ACK)
+                    self.sock.sendto(encode(ack_pkt), addr)
+                    buffer[seq] = pkt.payload
+                    # Slide window and deliver consecutive buffered in-order chunks
+                    while rcv_base in buffer:
+                        chunks.append(buffer.pop(rcv_base))
+                        rcv_base += 1
