@@ -1,4 +1,3 @@
-# Computer Network Project
 # P3 — Reliable Data Transfer over UDP
 
 File transfer over UDP with pluggable ARQ transports (Stop-and-Wait, Go-Back-N, Selective Repeat),
